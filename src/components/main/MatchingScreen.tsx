@@ -33,7 +33,7 @@ export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
   };
 
   const handleFindStranger = async () => {
-    if (!userProfile || !userProfile.id) {
+    if (!userProfile?.id) {
         toast({ variant: "destructive", title: "An error occurred", description: "User ID is missing. Please refresh and try again."})
         return;
     }
@@ -50,7 +50,7 @@ export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
   };
   
   const handleCancelSearch = async () => {
-    if (!userProfile || !userProfile.id) return;
+    if (!userProfile?.id) return;
     setIsSearching(false);
     if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
@@ -65,8 +65,12 @@ export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
       }
+      // If the user navigates away while searching, cancel the search
+      if (isSearching && userProfile?.id) {
+        cancelSearchAction(userProfile.id);
+      }
     };
-  }, []);
+  }, [isSearching, userProfile?.id]);
 
   return (
     <Card className="w-full max-w-md text-center shadow-2xl animate-in fade-in-50 zoom-in-95">
