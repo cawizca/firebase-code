@@ -17,38 +17,54 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-let db: Firestore;
-let dbInstancePromise: Promise<Firestore>;
+let db: Firestore | null = null;
+let dbInstancePromise: Promise<Firestore> | null = null;
 
 
-function getDbInstance() {
+function getDbInstance(): Promise<Firestore> {
+    const isBrowser = typeof window !== 'undefined';
+
     if (db) {
         return Promise.resolve(db);
     }
-    if (!dbInstancePromise) {
-        dbInstancePromise = new Promise((resolve, reject) => {
-            try {
-                const firestore = getFirestore(app);
-                enableIndexedDbPersistence(firestore)
-                    .then(() => {
-                        db = firestore;
-                        resolve(db);
-                    })
-                    .catch((err) => {
-                        if (err.code == 'failed-precondition') {
-                            console.log('Firestore persistence failed: multiple tabs open.');
-                        } else if (err.code == 'unimplemented') {
-                            console.log('Firestore persistence not available in this browser.');
-                        }
-                        // In case of error, resolve with the regular firestore instance
-                        db = firestore;
-                        resolve(db);
-                    });
-            } catch (e) {
-                reject(e);
-            }
-        });
+
+    if (dbInstancePromise) {
+        return dbInstancePromise;
     }
+    
+    // Server-side rendering
+    if (!isBrowser) {
+        if (!db) {
+           db = getFirestore(app);
+        }
+        return Promise.resolve(db);
+    }
+    
+    // Client-side rendering
+    dbInstancePromise = new Promise((resolve, reject) => {
+        try {
+            const firestore = getFirestore(app);
+            enableIndexedDbPersistence(firestore)
+                .then(() => {
+                    console.log("Firestore persistence enabled.");
+                    db = firestore;
+                    resolve(db);
+                })
+                .catch((err) => {
+                    if (err.code == 'failed-precondition') {
+                        console.warn('Firestore persistence failed: multiple tabs open.');
+                    } else if (err.code == 'unimplemented') {
+                        console.warn('Firestore persistence not available in this browser.');
+                    }
+                    // In any case of error, or if persistence is just not available,
+                    // we resolve with the regular firestore instance.
+                    db = firestore;
+                    resolve(db);
+                });
+        } catch (e) {
+            reject(e);
+        }
+    });
 
     return dbInstancePromise;
 }

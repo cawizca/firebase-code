@@ -100,6 +100,9 @@ export default function ChatInterface({ conversationId, userProfile, conversatio
                 };
               });
               setMessages(msgs);
+            }, (error) => {
+                console.error("Chat subscription error:", error);
+                toast({ variant: 'destructive', title: 'Connection Error', description: 'Lost connection to the chat. Please refresh.'});
             });
 
         } catch (error) {
@@ -119,7 +122,7 @@ export default function ChatInterface({ conversationId, userProfile, conversatio
 
   // Auto-scroll to bottom
   useEffect(() => {
-    const scrollViewport = scrollAreaRef.current?.querySelector('div');
+    const scrollViewport = scrollAreaRef.current?.querySelector('div[data-radix-scroll-area-viewport]');
     if (scrollViewport) {
         scrollViewport.scrollTo({
             top: scrollViewport.scrollHeight,
