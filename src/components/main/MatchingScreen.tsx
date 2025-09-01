@@ -88,7 +88,7 @@ export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
             <Button variant="outline" onClick={handleCancelSearch}>Cancel</Button>
           </div>
         ) : (
-          <Button size="lg" className="h-16 w-64 text-lg bg-accent hover:bg-accent/90 text-accent-foreground rounded-full shadow-lg transform hover:scale-105 transition-transform" onClick={handleFindStranger}>
+          <Button size="lg" className="h-16 w-64 text-lg bg-accent hover:bg-accent/90 text-accent-foreground rounded-full shadow-lg transform hover:scale-105 transition-transform" onClick={handleFindStranger} disabled={!userProfile.id}>
             <MessageSquareHeart className="mr-2 h-6 w-6" />
             Find a Stranger
           </Button>
