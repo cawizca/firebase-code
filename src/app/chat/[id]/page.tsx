@@ -20,10 +20,12 @@ export default function ChatPage() {
   const router = useRouter();
 
   useEffect(() => {
+    let storedProfile: UserProfile | null = null;
     try {
-      const storedProfile = sessionStorage.getItem('userProfile');
-      if (storedProfile) {
-        setUserProfile(JSON.parse(storedProfile));
+      const storedProfileString = sessionStorage.getItem('userProfile');
+      if (storedProfileString) {
+        storedProfile = JSON.parse(storedProfileString);
+        setUserProfile(storedProfile);
       } else {
         router.push('/');
         return;
@@ -36,12 +38,19 @@ export default function ChatPage() {
     }
 
     const fetchConversation = async () => {
-      if (!conversationId) return;
+      if (!conversationId || !storedProfile) return;
+      
       const convRef = doc(db, 'conversations', conversationId);
       const convSnap = await getDoc(convRef);
 
       if (convSnap.exists()) {
-        setConversation({ id: convSnap.id, ...convSnap.data() } as Conversation);
+        const convData = { id: convSnap.id, ...convSnap.data() } as Conversation;
+        // Ensure the current user is a participant
+        if (convData.participants.includes(storedProfile.id)) {
+            setConversation(convData);
+        } else {
+            setError('You are not a participant in this chat.');
+        }
       } else {
         setError('Chat not found.');
       }
@@ -57,7 +66,7 @@ export default function ChatPage() {
     router.push('/');
   }
 
-  if (isLoading || !userProfile) {
+  if (isLoading || !userProfile || !conversation) {
      return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -78,7 +87,7 @@ export default function ChatPage() {
     <div className="flex flex-col h-screen bg-background text-foreground">
       <Header userProfile={userProfile} onLogout={handleLogout} />
       <main className="flex-grow flex flex-col p-2 sm:p-4">
-        <ChatInterface conversationId={conversationId} userProfile={userProfile} conversation={conversation!} />
+        <ChatInterface conversationId={conversationId} userProfile={userProfile} conversation={conversation} />
       </main>
     </div>
   );

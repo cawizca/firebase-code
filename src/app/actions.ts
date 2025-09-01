@@ -14,6 +14,7 @@ import {
   doc,
   setDoc,
   getDoc,
+  deleteDoc,
   Timestamp,
 } from 'firebase/firestore';
 import { UserProfile } from './page';
@@ -32,6 +33,7 @@ type WaitingUser = {
   username: string;
   interests: string[];
   timestamp: any;
+  matchedConversationId?: string;
 };
 
 export type Conversation = {
@@ -67,9 +69,19 @@ export async function findMatchAction(userProfile: UserProfile, userId: string):
     };
     const conversationRef = await addDoc(collection(db, 'conversations'), conversationData);
 
-    // Remove stranger from waiting pool
+    // Add conversation ID to both users in the waiting pool for polling
     await setDoc(strangerDoc.ref, { matchedConversationId: conversationRef.id }, { merge: true });
-
+    
+    // Add current user to waiting pool briefly to be picked up by polling
+    const currentUserWaitingRef = doc(db, 'waitingPool', userId);
+    await setDoc(currentUserWaitingRef, { 
+        userId, 
+        username: userProfile.username,
+        interests: userProfile.interests,
+        timestamp: serverTimestamp(),
+        matchedConversationId: conversationRef.id,
+    }, { merge: true });
+    
     return { conversationId: conversationRef.id };
   } else {
     // No match found, add user to waiting pool
@@ -92,10 +104,11 @@ export async function findMatchAction(userProfile: UserProfile, userId: string):
 export async function getConversationStatus(userId: string): Promise<{ conversationId: string | null }> {
     const userWaitingRef = doc(db, 'waitingPool', userId);
     const userWaitingDoc = await getDoc(userWaitingRef);
-    if (userWaitingDoc.exists() && userWaitingDoc.data().matchedConversationId) {
-        const conversationId = userWaitingDoc.data().matchedConversationId;
+
+    if (userWaitingDoc.exists() && userWaitingDoc.data()?.matchedConversationId) {
+        const conversationId = userWaitingDoc.data()?.matchedConversationId;
         // Clean up user from waiting pool once matched
-        await setDoc(userWaitingRef, { matched: true }, { merge: true }); // Or delete
+        await deleteDoc(userWaitingRef);
         return { conversationId };
     }
     return { conversationId: null };
@@ -103,7 +116,7 @@ export async function getConversationStatus(userId: string): Promise<{ conversat
 
 export async function cancelSearchAction(userId: string) {
     const userWaitingRef = doc(db, 'waitingPool', userId);
-    await setDoc(userWaitingRef, { cancelled: true }, { merge: true }); // Or delete
+    await deleteDoc(userWaitingRef);
     return { success: true };
 }
 
