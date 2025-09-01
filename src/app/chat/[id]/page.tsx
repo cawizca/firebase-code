@@ -1,61 +1,53 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import ProfileSetup from '@/components/main/ProfileSetup';
-import MatchingScreen from '@/components/main/MatchingScreen';
 import Header from '@/components/main/Header';
+import ChatInterface from '@/components/chat/ChatInterface';
+import { type UserProfile } from '@/app/page';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
-export type UserProfile = {
-  username: string;
-  interests: string[];
-};
-
-export default function Home() {
+export default function ChatPage({ params }: { params: { id: string } }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     try {
       const storedProfile = sessionStorage.getItem('userProfile');
       if (storedProfile) {
         setUserProfile(JSON.parse(storedProfile));
+      } else {
+        // If no profile, can't be in chat. Redirect home.
+        router.push('/');
       }
     } catch (error) {
       console.error("Could not parse user profile from sessionStorage", error);
       sessionStorage.removeItem('userProfile');
+      router.push('/');
     }
     setIsLoading(false);
-  }, []);
-
-  const handleProfileCreate = (profile: UserProfile) => {
-    sessionStorage.setItem('userProfile', JSON.stringify(profile));
-    setUserProfile(profile);
-  };
+  }, [router]);
   
   const handleLogout = () => {
     sessionStorage.removeItem('userProfile');
-    setUserProfile(null);
+    router.push('/');
   }
 
-  if (isLoading) {
-    return (
+  if (isLoading || !userProfile) {
+     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-lg font-semibold">Loading AnonyConnect...</p>
+        <p className="text-lg font-semibold">Loading Chat...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-background text-foreground">
+    <div className="flex flex-col h-screen bg-background text-foreground">
       <Header userProfile={userProfile} onLogout={handleLogout} />
-      <main className="flex-grow flex items-center justify-center p-4">
-        {!userProfile ? (
-          <ProfileSetup onProfileCreate={handleProfileCreate} />
-        ) : (
-          <MatchingScreen userProfile={userProfile} />
-        )}
+      <main className="flex-grow flex flex-col p-2 sm:p-4">
+        <ChatInterface conversationId={params.id} userProfile={userProfile} />
       </main>
     </div>
   );
