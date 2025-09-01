@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -37,7 +38,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { db } from '@/lib/firebase';
+import { getDbInstance } from '@/lib/firebase';
 import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 
 type ChatMessage = {
@@ -79,25 +80,42 @@ export default function ChatInterface({ conversationId, userProfile, conversatio
 
 
   useEffect(() => {
-    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+    let unsubscribe: () => void;
+    
+    const setupSubscription = async () => {
+        try {
+            const db = await getDbInstance();
+            const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+            const q = query(messagesRef, orderBy('timestamp', 'asc'));
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const msgs: DisplayMessage[] = querySnapshot.docs.map((doc) => {
-        const data = doc.data() as ChatMessage;
-        return {
-          id: doc.id,
-          sender: data.userId === userProfile.id ? 'user' : 'stranger',
-          username: data.username,
-          text: data.text,
-          timestamp: data.timestamp?.toMillis() || Date.now(),
-        };
-      });
-      setMessages(msgs);
-    });
+            unsubscribe = onSnapshot(q, (querySnapshot) => {
+              const msgs: DisplayMessage[] = querySnapshot.docs.map((doc) => {
+                const data = doc.data() as ChatMessage;
+                return {
+                  id: doc.id,
+                  sender: data.userId === userProfile.id ? 'user' : 'stranger',
+                  username: data.username,
+                  text: data.text,
+                  timestamp: data.timestamp?.toMillis() || Date.now(),
+                };
+              });
+              setMessages(msgs);
+            });
 
-    return () => unsubscribe();
-  }, [conversationId, userProfile.id]);
+        } catch (error) {
+            console.error("Error setting up chat subscription:", error);
+            toast({ variant: 'destructive', title: 'Connection Error', description: 'Could not connect to the chat.'});
+        }
+    }
+    
+    setupSubscription();
+
+    return () => {
+        if (unsubscribe) {
+            unsubscribe();
+        }
+    };
+  }, [conversationId, userProfile.id, toast]);
 
   // Auto-scroll to bottom
   useEffect(() => {

@@ -7,8 +7,8 @@ import { type UserProfile } from '@/app/page';
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { doc, getDoc, type Firestore } from 'firebase/firestore';
+import { getDbInstance } from '@/lib/firebase';
 import { type Conversation } from '@/app/actions';
 
 export default function ChatPage() {
@@ -48,6 +48,7 @@ export default function ChatPage() {
       };
       
       try {
+        const db = await getDbInstance();
         const convRef = doc(db, 'conversations', conversationId);
         const convSnap = await getDoc(convRef);
 

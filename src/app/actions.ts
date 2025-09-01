@@ -2,7 +2,7 @@
 
 import { moderateChatMessage } from '@/ai/flows/moderate-chat-message';
 import { detectSuspectedMinor } from '@/ai/flows/detect-suspected-minor';
-import { db } from '@/lib/firebase';
+import { getDbInstance } from '@/lib/firebase';
 import {
   collection,
   query,
@@ -16,6 +16,7 @@ import {
   getDoc,
   deleteDoc,
   Timestamp,
+  type Firestore,
 } from 'firebase/firestore';
 import { UserProfile } from './page';
 
@@ -43,7 +44,12 @@ export type Conversation = {
   createdAt: any;
 };
 
+async function getDb(): Promise<Firestore> {
+    return getDbInstance();
+}
+
 export async function findMatchAction(userProfile: UserProfile, userId: string): Promise<{ conversationId: string | null }> {
+  const db = await getDb();
   const waitingPoolRef = collection(db, 'waitingPool');
   const q = query(
     waitingPoolRef,
@@ -102,6 +108,7 @@ export async function findMatchAction(userProfile: UserProfile, userId: string):
 }
 
 export async function getConversationStatus(userId: string): Promise<{ conversationId: string | null }> {
+    const db = await getDb();
     const userWaitingRef = doc(db, 'waitingPool', userId);
     const userWaitingDoc = await getDoc(userWaitingRef);
 
@@ -115,6 +122,7 @@ export async function getConversationStatus(userId: string): Promise<{ conversat
 }
 
 export async function cancelSearchAction(userId: string) {
+    const db = await getDb();
     const userWaitingRef = doc(db, 'waitingPool', userId);
     await deleteDoc(userWaitingRef);
     return { success: true };
@@ -136,6 +144,7 @@ export async function sendMessageAction(
     };
   }
   
+  const db = await getDb();
   const conversationRef = doc(db, 'conversations', conversationId);
   const messagesRef = collection(conversationRef, 'messages');
 

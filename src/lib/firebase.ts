@@ -1,6 +1,6 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
+import { getFirestore, enableIndexedDbPersistence, type Firestore } from "firebase/firestore";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -16,22 +16,42 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-const db = getFirestore(app);
+const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+let db: Firestore;
+let dbInstancePromise: Promise<Firestore>;
 
-// Enable offline persistence
-enableIndexedDbPersistence(db)
-  .catch((err) => {
-    if (err.code == 'failed-precondition') {
-      // Multiple tabs open, persistence can only be enabled
-      // in one tab at a time.
-      console.log('Firestore persistence failed: multiple tabs open.');
-    } else if (err.code == 'unimplemented') {
-      // The current browser does not support all of the
-      // features required to enable persistence
-      console.log('Firestore persistence not available in this browser.');
+
+function getDbInstance() {
+    if (db) {
+        return Promise.resolve(db);
     }
-  });
+    if (!dbInstancePromise) {
+        dbInstancePromise = new Promise((resolve, reject) => {
+            try {
+                const firestore = getFirestore(app);
+                enableIndexedDbPersistence(firestore)
+                    .then(() => {
+                        db = firestore;
+                        resolve(db);
+                    })
+                    .catch((err) => {
+                        if (err.code == 'failed-precondition') {
+                            console.log('Firestore persistence failed: multiple tabs open.');
+                        } else if (err.code == 'unimplemented') {
+                            console.log('Firestore persistence not available in this browser.');
+                        }
+                        // In case of error, resolve with the regular firestore instance
+                        db = firestore;
+                        resolve(db);
+                    });
+            } catch (e) {
+                reject(e);
+            }
+        });
+    }
+
+    return dbInstancePromise;
+}
 
 
-export { app, db };
+export { app, getDbInstance };
