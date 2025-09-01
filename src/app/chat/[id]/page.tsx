@@ -1,3 +1,4 @@
+
 'use client';
 
 import Header from '@/components/main/Header';
@@ -27,6 +28,7 @@ export default function ChatPage() {
         storedProfile = JSON.parse(storedProfileString);
         setUserProfile(storedProfile);
       } else {
+        // If no profile, we can't proceed.
         router.push('/');
         return;
       }
@@ -38,23 +40,38 @@ export default function ChatPage() {
     }
 
     const fetchConversation = async () => {
-      if (!conversationId || !storedProfile) return;
+      // Ensure we have a conversationId and a user profile before fetching
+      if (!conversationId || !storedProfile?.id) {
+          setError('Required chat information is missing.');
+          setIsLoading(false);
+          return;
+      };
       
-      const convRef = doc(db, 'conversations', conversationId);
-      const convSnap = await getDoc(convRef);
+      try {
+        const convRef = doc(db, 'conversations', conversationId);
+        const convSnap = await getDoc(convRef);
 
-      if (convSnap.exists()) {
-        const convData = { id: convSnap.id, ...convSnap.data() } as Conversation;
-        // Ensure the current user is a participant
-        if (convData.participants.includes(storedProfile.id)) {
-            setConversation(convData);
+        if (convSnap.exists()) {
+          const convData = { id: convSnap.id, ...convSnap.data() } as Conversation;
+          // Ensure the current user is a participant
+          if (convData.participants.includes(storedProfile.id)) {
+              setConversation(convData);
+          } else {
+              setError('You are not a participant in this chat.');
+          }
         } else {
-            setError('You are not a participant in this chat.');
+          setError('Chat not found.');
         }
-      } else {
-        setError('Chat not found.');
+      } catch (err: any) {
+          console.error("Firebase Error:", err);
+          if (err.message.includes("offline")) {
+            setError("Could not connect to the chat service. Please check your internet connection and try again.");
+          } else {
+            setError("An error occurred while loading the chat.");
+          }
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     fetchConversation();
@@ -66,7 +83,8 @@ export default function ChatPage() {
     router.push('/');
   }
 
-  if (isLoading || !userProfile || !conversation) {
+  // Unified loading and error states
+  if (isLoading) {
      return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
@@ -81,6 +99,16 @@ export default function ChatPage() {
         <p className="text-lg font-semibold text-destructive">{error}</p>
       </div>
     );
+  }
+
+  // Render only when everything is loaded and ready
+  if (!userProfile || !conversation) {
+    return (
+       <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+         <p className="text-lg font-semibold">Preparing your chat...</p>
+       </div>
+     );
   }
 
   return (
