@@ -74,7 +74,8 @@ export default function ChatInterface({ conversationId, userProfile, conversatio
   const [reportReason, setReportReason] = useState("");
   const [reportDescription, setReportDescription] = useState("");
   
-  const strangerUsername = conversation.participantUsernames[conversation.participants.find(p => p !== userProfile.id)!] || 'Stranger';
+  const strangerId = conversation.participants.find(p => p !== userProfile.id);
+  const strangerUsername = strangerId ? conversation.participantUsernames[strangerId] : 'Stranger';
 
 
   useEffect(() => {
