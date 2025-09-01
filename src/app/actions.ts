@@ -1,23 +1,5 @@
 'use server';
 
-import { moderateChatMessage } from '@/ai/flows/moderate-chat-message';
-import { detectSuspectedMinor } from '@/ai/flows/detect-suspected-minor';
-import { getDbInstance } from '@/lib/firebase';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  limit,
-  addDoc,
-  serverTimestamp,
-  doc,
-  setDoc,
-  getDoc,
-  deleteDoc,
-  Timestamp,
-  type Firestore,
-} from 'firebase/firestore';
 import { UserProfile } from './page';
 
 export type Message = {
@@ -28,104 +10,34 @@ export type Message = {
   timestamp: number;
 };
 
-// Firestore document types
-type WaitingUser = {
-  userId: string;
-  username: string;
-  interests: string[];
-  timestamp: any;
-  matchedConversationId?: string;
-};
-
 export type Conversation = {
-  id?: string;
-  participants: string[]; // [userId1, userId2]
+  id: string;
+  participants: string[];
   participantUsernames: { [key: string]: string };
-  createdAt: any;
+  createdAt: number;
 };
 
-async function getDb(): Promise<Firestore> {
-    return getDbInstance();
-}
 
 export async function findMatchAction(userProfile: UserProfile, userId: string): Promise<{ conversationId: string | null }> {
-  const db = await getDb();
-  const waitingPoolRef = collection(db, 'waitingPool');
-  const q = query(
-    waitingPoolRef,
-    where('userId', '!=', userId),
-    limit(1)
-  );
+  // Mock finding a match immediately.
+  const strangerId = `stranger_${Date.now()}`;
+  const conversationId = `conv_${Date.now()}`;
 
-  const querySnapshot = await getDocs(q);
-
-  if (!querySnapshot.empty) {
-    // Match found
-    const strangerDoc = querySnapshot.docs[0];
-    const stranger = strangerDoc.data() as WaitingUser;
-
-    // Create a new conversation
-    const conversationData: Conversation = {
-      participants: [userId, stranger.userId],
+  // In a real app, you would store this conversation object in a database.
+  // For now, we just create it on the fly.
+  const mockConversation: Conversation = {
+      id: conversationId,
+      participants: [userId, strangerId],
       participantUsernames: {
-        [userId]: userProfile.username,
-        [stranger.userId]: stranger.username,
+          [userId]: userProfile.username,
+          [strangerId]: "WanderingSoul"
       },
-      createdAt: serverTimestamp(),
-    };
-    const conversationRef = await addDoc(collection(db, 'conversations'), conversationData);
-
-    // Add conversation ID to both users in the waiting pool for polling
-    await setDoc(strangerDoc.ref, { matchedConversationId: conversationRef.id }, { merge: true });
-    
-    // Add current user to waiting pool briefly to be picked up by polling
-    const currentUserWaitingRef = doc(db, 'waitingPool', userId);
-    await setDoc(currentUserWaitingRef, { 
-        userId, 
-        username: userProfile.username,
-        interests: userProfile.interests,
-        timestamp: serverTimestamp(),
-        matchedConversationId: conversationRef.id,
-    }, { merge: true });
-    
-    return { conversationId: conversationRef.id };
-  } else {
-    // No match found, add user to waiting pool
-    const waitingUserRef = doc(db, 'waitingPool', userId);
-    const waitingUserDoc = await getDoc(waitingUserRef);
-
-    if (!waitingUserDoc.exists()) {
-       await setDoc(waitingUserRef, {
-        userId,
-        username: userProfile.username,
-        interests: userProfile.interests,
-        timestamp: serverTimestamp(),
-      });
-    }
-   
-    return { conversationId: null };
+      createdAt: Date.now()
   }
-}
+  
+  console.log("Created mock conversation:", mockConversation);
 
-export async function getConversationStatus(userId: string): Promise<{ conversationId: string | null }> {
-    const db = await getDb();
-    const userWaitingRef = doc(db, 'waitingPool', userId);
-    const userWaitingDoc = await getDoc(userWaitingRef);
-
-    if (userWaitingDoc.exists() && userWaitingDoc.data()?.matchedConversationId) {
-        const conversationId = userWaitingDoc.data()?.matchedConversationId;
-        // Clean up user from waiting pool once matched
-        await deleteDoc(userWaitingRef);
-        return { conversationId };
-    }
-    return { conversationId: null };
-}
-
-export async function cancelSearchAction(userId: string) {
-    const db = await getDb();
-    const userWaitingRef = doc(db, 'waitingPool', userId);
-    await deleteDoc(userWaitingRef);
-    return { success: true };
+  return { conversationId };
 }
 
 
@@ -135,29 +47,17 @@ export async function sendMessageAction(
   username: string,
   userId: string
 ) {
-  const moderationResult = await moderateChatMessage({ message: messageText });
-
-  if (!moderationResult.isSafe) {
-    return {
+  // Mock sending a message. In a real app, this would save to a database.
+  console.log(`Message sent in ${conversationId}: [${username}] ${messageText}`);
+  
+  // Mock moderation
+  if (messageText.toLowerCase().includes("badword")) {
+     return {
       success: false,
-      error: `Message not sent. Reason: ${moderationResult.reason}`,
+      error: `Message not sent. Reason: Inappropriate language.`,
     };
   }
-  
-  const db = await getDb();
-  const conversationRef = doc(db, 'conversations', conversationId);
-  const messagesRef = collection(conversationRef, 'messages');
 
-  const messageData = {
-    userId,
-    username,
-    text: messageText,
-    timestamp: serverTimestamp(),
-  };
-  
-  await addDoc(messagesRef, messageData);
-  
-  // We don't return the message object anymore because we'll be listening for real-time updates.
   return { success: true };
 }
 
@@ -168,28 +68,6 @@ export async function reportUserAction(
   conversationId: string
 ) {
   console.log(`User ${reportedUser} in conversation ${conversationId} reported for: ${reason}`);
-
-  if (reason === 'underage_user') {
-    const userData = `Reported user: ${reportedUser}`;
-    const messageContent = chatHistory.map((m) => `${m.username}: ${m.text}`).join('\n');
-
-    try {
-      const result = await detectSuspectedMinor({ userData, messageContent });
-
-      if (result.isSuspectedMinor) {
-        console.log('AI detected suspected minor. Reason:', result.reason);
-        // Here you would trigger further moderation actions, like flagging the user account.
-        return {
-          success: true,
-          message:
-            'Report submitted. Our team will review this user shortly. AI has flagged this user for potential policy violation.',
-        };
-      }
-    } catch (e) {
-      console.error('Error detecting suspected minor:', e);
-    }
-  }
-
   // In a real app, this would save the report to a database.
   return { success: true, message: 'Report submitted. Thank you for helping keep our community safe.' };
 }
@@ -199,4 +77,19 @@ export async function endChatAction(conversationId: string) {
     // For now, we just log it.
     console.log(`Chat ended for conversation ${conversationId}`);
     return { success: true };
+}
+
+export async function getConversationAction(conversationId: string, userId: string): Promise<Conversation | null> {
+    // Mock fetching a conversation
+    const strangerId = `stranger_${conversationId.split('_')[1]}`;
+    const mockConversation: Conversation = {
+      id: conversationId,
+      participants: [userId, strangerId],
+      participantUsernames: {
+        [userId]: "You", // This would be fetched from session/DB
+        [strangerId]: "WanderingSoul"
+      },
+      createdAt: Date.now()
+    };
+    return mockConversation;
 }

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, MessageSquareHeart } from 'lucide-react';
 import { type UserProfile } from '@/app/page';
 import { Badge } from '../ui/badge';
-import { findMatchAction, getConversationStatus, cancelSearchAction } from '@/app/actions';
+import { findMatchAction } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 
 type MatchingScreenProps = {
@@ -18,19 +18,6 @@ export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
   const [isSearching, setIsSearching] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const pollIntervalRef = useRef<NodeJS.Timeout>();
-
-  const startPollingForMatch = (userId: string) => {
-    pollIntervalRef.current = setInterval(async () => {
-      const { conversationId } = await getConversationStatus(userId);
-      if (conversationId) {
-        clearInterval(pollIntervalRef.current);
-        setIsSearching(false);
-        toast({ title: "Match found!", description: "Connecting you to your new chat." });
-        router.push(`/chat/${conversationId}`);
-      }
-    }, 2000); // Poll every 2 seconds
-  };
 
   const handleFindStranger = async () => {
     if (!userProfile?.id) {
@@ -38,39 +25,26 @@ export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
         return;
     }
     setIsSearching(true);
+    
+    // Simulate a short delay for finding a match
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
     const { conversationId } = await findMatchAction(userProfile, userProfile.id);
+    
     if (conversationId) {
       setIsSearching(false);
       toast({ title: "Match found!", description: "Connecting you to your new chat." });
       router.push(`/chat/${conversationId}`);
     } else {
-      // User was added to the waiting pool, start polling
-      startPollingForMatch(userProfile.id);
+      setIsSearching(false);
+      toast({ variant: "destructive", title: "No one is available", description: "Couldn't find anyone to chat with. Please try again later." });
     }
   };
   
   const handleCancelSearch = async () => {
-    if (!userProfile?.id) return;
     setIsSearching(false);
-    if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-    }
-    await cancelSearchAction(userProfile.id);
     toast({ title: "Search cancelled." });
   }
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-      // If the user navigates away while searching, cancel the search
-      if (isSearching && userProfile?.id) {
-        cancelSearchAction(userProfile.id);
-      }
-    };
-  }, [isSearching, userProfile?.id]);
 
   return (
     <Card className="w-full max-w-md text-center shadow-2xl animate-in fade-in-50 zoom-in-95">

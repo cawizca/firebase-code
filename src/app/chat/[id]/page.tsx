@@ -7,9 +7,7 @@ import { type UserProfile } from '@/app/page';
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import { doc, getDoc, type Firestore, enableIndexedDbPersistence } from 'firebase/firestore';
-import { getDbInstance } from '@/lib/firebase';
-import { type Conversation } from '@/app/actions';
+import { type Conversation, getConversationAction } from '@/app/actions';
 
 export default function ChatPage() {
   const params = useParams();
@@ -46,38 +44,16 @@ export default function ChatPage() {
       };
       
       try {
-        const db = await getDbInstance();
-        // Attempt to enable persistence here, only runs on client
-        try {
-          await enableIndexedDbPersistence(db);
-        } catch (err: any) {
-            if (err.code == 'failed-precondition') {
-                console.warn('Firestore persistence failed: multiple tabs open.');
-            } else if (err.code == 'unimplemented') {
-                console.warn('Firestore persistence not available in this browser.');
-            }
-        }
-        
-        const convRef = doc(db, 'conversations', conversationId);
-        const convSnap = await getDoc(convRef);
+        const convData = await getConversationAction(conversationId, storedProfile.id);
 
-        if (convSnap.exists()) {
-          const convData = { id: convSnap.id, ...convSnap.data() } as Conversation;
-          if (convData.participants.includes(storedProfile.id)) {
-              setConversation(convData);
-          } else {
-              setError('You are not a participant in this chat.');
-          }
+        if (convData) {
+          setConversation(convData);
         } else {
           setError('Chat not found.');
         }
       } catch (err: any) {
-          console.error("Firebase Error:", err);
-          if (err.message.includes("offline")) {
-            setError("Could not connect to the chat service. Please check your internet connection and try again.");
-          } else {
-            setError("An error occurred while loading the chat.");
-          }
+          console.error("Error:", err);
+          setError("An error occurred while loading the chat.");
       } finally {
         setIsLoading(false);
       }
@@ -117,12 +93,14 @@ export default function ChatPage() {
        </div>
      );
   }
+  
+  const strangerUsername = conversation.participantUsernames[conversation.participants.find(p => p !== userProfile.id)!] ?? 'Stranger';
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       <Header userProfile={userProfile} onLogout={handleLogout} />
       <main className="flex-grow flex flex-col p-2 sm:p-4">
-        <ChatInterface conversationId={conversationId} userProfile={userProfile} conversation={conversation} />
+        <ChatInterface conversationId={conversationId} userProfile={userProfile} strangerUsername={strangerUsername} />
       </main>
     </div>
   );

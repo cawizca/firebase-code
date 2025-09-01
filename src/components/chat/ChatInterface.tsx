@@ -4,14 +4,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { UserProfile } from '@/app/page';
-import type { Conversation } from '@/app/actions';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Flag, LogOut, Send, UserX, Info, Loader2 } from 'lucide-react';
-import { sendMessageAction, reportUserAction, endChatAction } from '@/app/actions';
+import { sendMessageAction, reportUserAction, endChatAction, type Message } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -38,33 +37,15 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { getDbInstance } from '@/lib/firebase';
-import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
-
-type ChatMessage = {
-  id: string;
-  userId: string;
-  username: string;
-  text: string;
-  timestamp: Timestamp;
-};
-
-type DisplayMessage = {
-  id: string;
-  sender: 'user' | 'stranger';
-  username: string;
-  text: string;
-  timestamp: number;
-}
 
 type ChatInterfaceProps = {
   conversationId: string;
   userProfile: UserProfile;
-  conversation: Conversation;
+  strangerUsername: string;
 };
 
-export default function ChatInterface({ conversationId, userProfile, conversation }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+export default function ChatInterface({ conversationId, userProfile, strangerUsername }: ChatInterfaceProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const router = useRouter();
@@ -75,51 +56,6 @@ export default function ChatInterface({ conversationId, userProfile, conversatio
   const [reportReason, setReportReason] = useState("");
   const [reportDescription, setReportDescription] = useState("");
   
-  const strangerId = conversation.participants.find(p => p !== userProfile.id);
-  const strangerUsername = strangerId ? conversation.participantUsernames[strangerId] : 'Stranger';
-
-
-  useEffect(() => {
-    let unsubscribe: () => void;
-    
-    const setupSubscription = async () => {
-        try {
-            const db = await getDbInstance();
-            const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-            const q = query(messagesRef, orderBy('timestamp', 'asc'));
-
-            unsubscribe = onSnapshot(q, (querySnapshot) => {
-              const msgs: DisplayMessage[] = querySnapshot.docs.map((doc) => {
-                const data = doc.data() as ChatMessage;
-                return {
-                  id: doc.id,
-                  sender: data.userId === userProfile.id ? 'user' : 'stranger',
-                  username: data.username,
-                  text: data.text,
-                  timestamp: data.timestamp?.toMillis() || Date.now(),
-                };
-              });
-              setMessages(msgs);
-            }, (error) => {
-                console.error("Chat subscription error:", error);
-                toast({ variant: 'destructive', title: 'Connection Error', description: 'Lost connection to the chat. Please refresh.'});
-            });
-
-        } catch (error) {
-            console.error("Error setting up chat subscription:", error);
-            toast({ variant: 'destructive', title: 'Connection Error', description: 'Could not connect to the chat.'});
-        }
-    }
-    
-    setupSubscription();
-
-    return () => {
-        if (unsubscribe) {
-            unsubscribe();
-        }
-    };
-  }, [conversationId, userProfile.id, toast]);
-
   // Auto-scroll to bottom
   useEffect(() => {
     const scrollViewport = scrollAreaRef.current?.querySelector('div[data-radix-scroll-area-viewport]');
@@ -138,11 +74,34 @@ export default function ChatInterface({ conversationId, userProfile, conversatio
 
     setIsSending(true);
 
+    const sentMessage: Message = {
+        id: `msg_${Date.now()}`,
+        sender: 'user',
+        username: userProfile.username,
+        text: newMessage,
+        timestamp: Date.now()
+    };
+    setMessages(prev => [...prev, sentMessage]);
+    setNewMessage('');
+
     const result = await sendMessageAction(conversationId, newMessage, userProfile.username, userProfile.id);
 
     if (result.success) {
-      setNewMessage('');
+      // Message was "sent" successfully, now simulate a reply
+      setTimeout(() => {
+        const replyMessage: Message = {
+            id: `msg_${Date.now() + 1}`,
+            sender: 'stranger',
+            username: strangerUsername,
+            text: `You said: "${newMessage}". I am just a mock user.`,
+            timestamp: Date.now()
+        };
+        setMessages(prev => [...prev, replyMessage]);
+      }, 1000);
+
     } else {
+      // If message failed moderation, remove it from the UI
+      setMessages(prev => prev.filter(m => m.id !== sentMessage.id));
       toast({
         variant: 'destructive',
         title: 'Message Moderated',
