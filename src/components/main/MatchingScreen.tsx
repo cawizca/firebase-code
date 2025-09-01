@@ -33,6 +33,10 @@ export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
   };
 
   const handleFindStranger = async () => {
+    if (!userProfile.id) {
+        toast({ variant: "destructive", title: "An error occurred", description: "User ID is missing. Please refresh and try again."})
+        return;
+    }
     setIsSearching(true);
     const { conversationId } = await findMatchAction(userProfile, userProfile.id);
     if (conversationId) {
@@ -46,6 +50,7 @@ export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
   };
   
   const handleCancelSearch = async () => {
+    if (!userProfile.id) return;
     setIsSearching(false);
     if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
