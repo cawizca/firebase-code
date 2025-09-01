@@ -11,7 +11,7 @@ import { X, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 type ProfileSetupProps = {
-  onProfileCreate: (profile: UserProfile) => void;
+  onProfileCreate: (profile: Omit<UserProfile, 'id'>) => void;
 };
 
 const suggestedInterests = ['Music', 'Movies', 'Gaming', 'Sports', 'Travel', 'Art', 'Reading', 'Cooking'];

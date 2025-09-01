@@ -3,13 +3,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { UserProfile } from '@/app/page';
-import { Button } from '@/components/ui/button';
+import type { Conversation } from '@/app/actions';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Flag, LogOut, Send, UserX, Info, Loader2 } from 'lucide-react';
-import { sendMessageAction, reportUserAction, type Message } from '@/app/actions';
+import { sendMessageAction, reportUserAction, endChatAction } from '@/app/actions';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -36,17 +37,33 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import { buttonVariants } from '@/components/ui/button';
+import { db } from '@/lib/firebase';
+import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
+
+type ChatMessage = {
+  id: string;
+  userId: string;
+  username: string;
+  text: string;
+  timestamp: Timestamp;
+};
+
+type DisplayMessage = {
+  id: string;
+  sender: 'user' | 'stranger';
+  username: string;
+  text: string;
+  timestamp: number;
+}
 
 type ChatInterfaceProps = {
   conversationId: string;
   userProfile: UserProfile;
+  conversation: Conversation;
 };
 
-const STRANGER_USERNAME = 'WanderingSoul';
-
-export default function ChatInterface({ conversationId, userProfile }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function ChatInterface({ conversationId, userProfile, conversation }: ChatInterfaceProps) {
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const router = useRouter();
@@ -56,20 +73,30 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [reportDescription, setReportDescription] = useState("");
+  
+  const strangerUsername = conversation.participantUsernames[conversation.participants.find(p => p !== userProfile.id)!] || 'Stranger';
 
 
   useEffect(() => {
-    // Initial greeting from stranger
-    setMessages([
-      {
-        id: 'start-1',
-        sender: 'stranger',
-        username: STRANGER_USERNAME,
-        text: 'Hey there! Nice to meet you.',
-        timestamp: Date.now(),
-      },
-    ]);
-  }, []);
+    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const msgs: DisplayMessage[] = querySnapshot.docs.map((doc) => {
+        const data = doc.data() as ChatMessage;
+        return {
+          id: doc.id,
+          sender: data.userId === userProfile.id ? 'user' : 'stranger',
+          username: data.username,
+          text: data.text,
+          timestamp: data.timestamp?.toMillis() || Date.now(),
+        };
+      });
+      setMessages(msgs);
+    });
+
+    return () => unsubscribe();
+  }, [conversationId, userProfile.id]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -82,24 +109,6 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
     }
   }, [messages]);
   
-  // Simulate stranger typing and replying
-  useEffect(() => {
-    const lastMessage = messages[messages.length-1];
-    if (lastMessage && lastMessage.sender === 'user') {
-        const timeout = setTimeout(() => {
-            const reply: Message = {
-                id: `msg_${Date.now()}`,
-                sender: 'stranger',
-                username: STRANGER_USERNAME,
-                text: 'That\'s interesting! Tell me more.',
-                timestamp: Date.now(),
-            };
-            setMessages(prev => [...prev, reply]);
-        }, 1500 + Math.random() * 1000);
-        
-        return () => clearTimeout(timeout);
-    }
-  }, [messages]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,10 +116,9 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
 
     setIsSending(true);
 
-    const result = await sendMessageAction(newMessage, userProfile.username);
+    const result = await sendMessageAction(conversationId, newMessage, userProfile.username, userProfile.id);
 
-    if (result.success && result.message) {
-      setMessages((prev) => [...prev, result.message!]);
+    if (result.success) {
       setNewMessage('');
     } else {
       toast({
@@ -123,7 +131,8 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
     setIsSending(false);
   };
   
-  const handleEndChat = () => {
+  const handleEndChat = async () => {
+    await endChatAction(conversationId);
     toast({
         title: "Chat Ended",
         description: "You have left the conversation.",
@@ -131,10 +140,12 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
     router.push('/');
   }
 
-  const handleBlockUser = () => {
+  const handleBlockUser = async () => {
+    // In a real app, you'd add the other user's ID to a "blocked" list in the user's profile.
+    await endChatAction(conversationId);
     toast({
         title: "User Blocked",
-        description: `You will not be matched with ${STRANGER_USERNAME} again.`,
+        description: `You will not be matched with ${strangerUsername} again.`,
     })
     router.push('/');
   }
@@ -145,7 +156,7 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
         return;
     }
     
-    const result = await reportUserAction(reportReason, messages, STRANGER_USERNAME);
+    const result = await reportUserAction(reportReason, messages, strangerUsername, conversationId);
     
     if (result.success) {
         toast({
@@ -171,10 +182,10 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
       <CardHeader className="flex flex-row items-center justify-between border-b p-3 sm:p-4">
         <div className="flex items-center gap-3">
           <Avatar>
-            <AvatarFallback>{STRANGER_USERNAME.charAt(0)}</AvatarFallback>
+            <AvatarFallback>{strangerUsername.charAt(0)}</AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-semibold">{STRANGER_USERNAME}</p>
+            <p className="font-semibold">{strangerUsername}</p>
             <p className="text-xs text-green-500">Online</p>
           </div>
         </div>
@@ -202,7 +213,7 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
                 </DialogTrigger>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Report {STRANGER_USERNAME}</DialogTitle>
+                        <DialogTitle>Report {strangerUsername}</DialogTitle>
                         <DialogDescription>
                             Help us keep the community safe. What's wrong with this user?
                         </DialogDescription>
@@ -228,7 +239,7 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
                 </AlertDialogTrigger>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                    <AlertDialogTitle>Block {STRANGER_USERNAME}?</AlertDialogTitle>
+                    <AlertDialogTitle>Block {strangerUsername}?</AlertDialogTitle>
                     <AlertDialogDescription>
                         You won't be matched with this user again. This will also end the current chat.
                     </AlertDialogDescription>
@@ -244,43 +255,46 @@ export default function ChatInterface({ conversationId, userProfile }: ChatInter
       <CardContent className="flex-grow p-0">
         <ScrollArea className="h-full" ref={scrollAreaRef}>
           <div className="space-y-4 p-4">
-            <div className="flex items-start gap-2.5 text-sm text-muted-foreground bg-accent/10 p-3 rounded-lg border border-accent/20">
-              <Info className="h-5 w-5 mt-1 text-accent flex-shrink-0" />
-              <p>You are now chatting with a random stranger. Be respectful and have fun! Your messages are checked for safety. Personal info is not allowed.</p>
-            </div>
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex items-end gap-2 ${
-                  msg.sender === 'user' ? 'justify-end' : 'justify-start'
-                }`}
-              >
-                {msg.sender === 'stranger' && (
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>{msg.username.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                )}
-                <div
-                  className={`max-w-[75%] rounded-lg px-4 py-2 shadow-md ${
-                    msg.sender === 'user'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'bg-muted'
-                  }`}
-                >
-                  <p className="text-sm break-words">{msg.text}</p>
-                  <p className={`text-xs mt-1 ${
-                    msg.sender === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                    } ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>
-                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+            {messages.length === 0 ? (
+                <div className="flex items-start gap-2.5 text-sm text-muted-foreground bg-accent/10 p-3 rounded-lg border border-accent/20">
+                    <Info className="h-5 w-5 mt-1 text-accent flex-shrink-0" />
+                    <p>You are now connected with a stranger. Say hello! Your messages are checked for safety. Personal info is not allowed.</p>
                 </div>
-                {msg.sender === 'user' && (
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>{msg.username.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                )}
-              </div>
-            ))}
+            ) : (
+                messages.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex items-end gap-2 ${
+                      msg.sender === 'user' ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    {msg.sender === 'stranger' && (
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>{msg.username.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                    )}
+                    <div
+                      className={`max-w-[75%] rounded-lg px-4 py-2 shadow-md ${
+                        msg.sender === 'user'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted'
+                      }`}
+                    >
+                      <p className="text-sm break-words">{msg.text}</p>
+                      <p className={`text-xs mt-1 ${
+                        msg.sender === 'user' ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                        } ${msg.sender === 'user' ? 'text-right' : 'text-left'}`}>
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    {msg.sender === 'user' && (
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>{msg.username.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                    )}
+                  </div>
+                ))
+            )}
           </div>
         </ScrollArea>
       </CardContent>

@@ -7,6 +7,7 @@ import Header from '@/components/main/Header';
 import { Loader2 } from 'lucide-react';
 
 export type UserProfile = {
+  id: string; // Unique ID for the user session
   username: string;
   interests: string[];
 };
@@ -28,9 +29,10 @@ export default function Home() {
     setIsLoading(false);
   }, []);
 
-  const handleProfileCreate = (profile: UserProfile) => {
-    sessionStorage.setItem('userProfile', JSON.stringify(profile));
-    setUserProfile(profile);
+  const handleProfileCreate = (profile: Omit<UserProfile, 'id'>) => {
+    const fullProfile = { ...profile, id: `user_${Date.now()}` };
+    sessionStorage.setItem('userProfile', JSON.stringify(fullProfile));
+    setUserProfile(fullProfile);
   };
   
   const handleLogout = () => {

@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, MessageSquareHeart } from 'lucide-react';
 import { type UserProfile } from '@/app/page';
 import { Badge } from '../ui/badge';
+import { findMatchAction, getConversationStatus, cancelSearchAction } from '@/app/actions';
+import { useToast } from '@/hooks/use-toast';
 
 type MatchingScreenProps = {
   userProfile: UserProfile;
@@ -15,20 +17,51 @@ type MatchingScreenProps = {
 export default function MatchingScreen({ userProfile }: MatchingScreenProps) {
   const [isSearching, setIsSearching] = useState(false);
   const router = useRouter();
+  const { toast } = useToast();
+  const pollIntervalRef = useRef<NodeJS.Timeout>();
 
-  const handleFindStranger = () => {
+  const startPollingForMatch = (userId: string) => {
+    pollIntervalRef.current = setInterval(async () => {
+      const { conversationId } = await getConversationStatus(userId);
+      if (conversationId) {
+        clearInterval(pollIntervalRef.current);
+        setIsSearching(false);
+        toast({ title: "Match found!", description: "Connecting you to your new chat." });
+        router.push(`/chat/${conversationId}`);
+      }
+    }, 2000); // Poll every 2 seconds
+  };
+
+  const handleFindStranger = async () => {
     setIsSearching(true);
-    // Mock finding a match and navigating to chat
-    setTimeout(() => {
-      // In a real app, this would come from the backend
-      const conversationId = `conv_${Date.now()}`;
+    const { conversationId } = await findMatchAction(userProfile, userProfile.id);
+    if (conversationId) {
+      setIsSearching(false);
+      toast({ title: "Match found!", description: "Connecting you to your new chat." });
       router.push(`/chat/${conversationId}`);
-    }, 3000); // Simulate a 3-second search
+    } else {
+      // User was added to the waiting pool, start polling
+      startPollingForMatch(userProfile.id);
+    }
   };
   
-  const handleCancelSearch = () => {
+  const handleCancelSearch = async () => {
     setIsSearching(false);
+    if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+    }
+    await cancelSearchAction(userProfile.id);
+    toast({ title: "Search cancelled." });
   }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   return (
     <Card className="w-full max-w-md text-center shadow-2xl animate-in fade-in-50 zoom-in-95">
