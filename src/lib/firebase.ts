@@ -1,6 +1,7 @@
+
 // Import the functions you need from the SDKs you need
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence, type Firestore } from "firebase/firestore";
+import { getFirestore, type Firestore } from "firebase/firestore";
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -17,56 +18,12 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-let db: Firestore | null = null;
-let dbInstancePromise: Promise<Firestore> | null = null;
+const db: Firestore = getFirestore(app);
 
-
-function getDbInstance(): Promise<Firestore> {
-    const isBrowser = typeof window !== 'undefined';
-
-    if (db) {
-        return Promise.resolve(db);
-    }
-
-    if (dbInstancePromise) {
-        return dbInstancePromise;
-    }
-    
-    // Server-side rendering
-    if (!isBrowser) {
-        if (!db) {
-           db = getFirestore(app);
-        }
-        return Promise.resolve(db);
-    }
-    
-    // Client-side rendering
-    dbInstancePromise = new Promise((resolve, reject) => {
-        try {
-            const firestore = getFirestore(app);
-            enableIndexedDbPersistence(firestore)
-                .then(() => {
-                    console.log("Firestore persistence enabled.");
-                    db = firestore;
-                    resolve(db);
-                })
-                .catch((err) => {
-                    if (err.code == 'failed-precondition') {
-                        console.warn('Firestore persistence failed: multiple tabs open.');
-                    } else if (err.code == 'unimplemented') {
-                        console.warn('Firestore persistence not available in this browser.');
-                    }
-                    // In any case of error, or if persistence is just not available,
-                    // we resolve with the regular firestore instance.
-                    db = firestore;
-                    resolve(db);
-                });
-        } catch (e) {
-            reject(e);
-        }
-    });
-
-    return dbInstancePromise;
+// We are not using a promise-based approach anymore to avoid race conditions.
+// Persistence is now enabled directly on the client-side where it's needed.
+async function getDbInstance(): Promise<Firestore> {
+    return Promise.resolve(db);
 }
 
 
