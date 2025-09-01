@@ -4,10 +4,12 @@ import Header from '@/components/main/Header';
 import ChatInterface from '@/components/chat/ChatInterface';
 import { type UserProfile } from '@/app/page';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
-export default function ChatPage({ params }: { params: { id: string } }) {
+export default function ChatPage() {
+  const params = useParams();
+  const conversationId = params.id as string;
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
@@ -47,7 +49,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     <div className="flex flex-col h-screen bg-background text-foreground">
       <Header userProfile={userProfile} onLogout={handleLogout} />
       <main className="flex-grow flex flex-col p-2 sm:p-4">
-        <ChatInterface conversationId={params.id} userProfile={userProfile} />
+        <ChatInterface conversationId={conversationId} userProfile={userProfile} />
       </main>
     </div>
   );
